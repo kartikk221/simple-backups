@@ -1,6 +1,6 @@
 {
     "name": "simple-backups",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Simple yet unopinionated zero-dependency package to easily setup automatic backups for any data source that persists to any storage mechanism.",
     "type": "module",
     "main": "./src/index.js",

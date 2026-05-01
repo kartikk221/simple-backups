@@ -1,3 +1,3 @@
-import { SimpleBackups } from './SimpleBackups';
+import { SimpleBackups } from './SimpleBackups.js';
 
 export { SimpleBackups };

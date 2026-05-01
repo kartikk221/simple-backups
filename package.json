@@ -1,0 +1,33 @@
+{
+    "name": "simple-backups",
+    "version": "1.0.0",
+    "description": "Simple yet unopinionated zero-dependency package to easily setup automatic backups for any data source that persists to any storage mechanism.",
+    "type": "module",
+    "main": "./src/index.js",
+    "exports": {
+        ".": "./src/index.js"
+    },
+    "files": [
+        "src",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "test": "node --test"
+    },
+    "keywords": [
+        "backup",
+        "backups",
+        "storage",
+        "scheduler",
+        "nodejs",
+        "javascript",
+        "s3-bucket",
+        "unopinionated",
+        "zero-dependency"
+    ],
+    "license": "MIT",
+    "engines": {
+        "node": ">=20"
+    }
+}

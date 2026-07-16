@@ -1,11 +1,16 @@
 {
     "name": "simple-backups",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Simple yet unopinionated zero-dependency package to easily setup automatic backups for any data source that persists to any storage mechanism.",
     "type": "module",
     "main": "./src/index.js",
+    "types": "./src/index.d.ts",
     "exports": {
-        ".": "./src/index.js"
+        ".": {
+            "types": "./src/index.d.ts",
+            "import": "./src/index.js",
+            "default": "./src/index.js"
+        }
     },
     "files": [
         "src",
@@ -13,7 +18,7 @@
         "LICENSE"
     ],
     "scripts": {
-        "test": "node --test"
+        "test": "node --test && tsc --project tsconfig.json"
     },
     "keywords": [
         "backup",
@@ -29,5 +34,8 @@
     "license": "MIT",
     "engines": {
         "node": ">=20"
+    },
+    "devDependencies": {
+        "typescript": "7.0.2"
     }
 }

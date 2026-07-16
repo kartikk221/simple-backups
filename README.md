@@ -16,6 +16,7 @@ This package aims to simplify the task of automatically creating and pruning bac
 ## Features
 - Simple-to-use API
 - JSDoc Type Support
+- TypeScript Type Definitions
 - Automatic Backup Creation
 - Multi-Window Backup Retention
 - CPU & Memory Efficient
@@ -80,6 +81,19 @@ backups.on('delete', (backup) => {
 backups.on('error', (error) => {
     console.error(error);
 });
+```
+
+## TypeScript
+SimpleBackups includes first-party TypeScript declarations. No separate `@types` package is required.
+
+```typescript
+import {
+    SimpleBackups,
+    type Backup,
+    type BackupAdapters,
+    type BackupWindow,
+    type SimpleBackupsOptions
+} from 'simple-backups';
 ```
 
 ## SimpleBackups

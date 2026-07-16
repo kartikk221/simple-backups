@@ -89,9 +89,9 @@ Below is a breakdown of the `SimpleBackups` class.
 * `new SimpleBackups(Object: options)`: Creates a new SimpleBackups instance with the provided `options`.
   * `options` [`Object`]: Constructor options for this instance.
     * `adapters` [`BackupAdapters`]: Adapter methods used to list, create and delete backups from the upstream storage mechanism.
-    * `windows` [`BackupWindow[]`]: Retention windows used to determine when backups should be created and which backups should be kept.
+    * `windows` [`BackupWindow[]`]: Retention windows used to determine the backup creation cadence and which backups should be kept.
   * **Note!** the SimpleBackups instance starts automatically when constructed.
-  * **Note!** the smallest `interval_ms` from the provided windows is used as the internal tick interval.
+  * **Note!** the smallest `interval_ms` from the provided windows is used as the backup creation cadence and internal tick interval. Larger windows retain backups created at that cadence instead of creating additional backups.
   * **Note!** all window `interval_ms` and `limit` values must be positive finite integers.
 
 #### SimpleBackups Properties
@@ -129,7 +129,7 @@ Below is a breakdown of the `SimpleBackups` class.
 ### BackupWindow Properties
 | Property  | Type     | Description                |
 | :-------- | :------- | :------------------------- |
-| `interval_ms`   | `Number`    | The interval at which this window's backups should be created in milliseconds.   |
+| `interval_ms`   | `Number`    | The width of each retention slot in this window in milliseconds.   |
 | `limit`   | `Number`    | The maximum number of backups to keep in this window.   |
 
 ### Backup Properties
@@ -139,7 +139,11 @@ Below is a breakdown of the `SimpleBackups` class.
 | `timestamp`   | `Number`    | The timestamp at which the backup was created in milliseconds.   |
 
 ## Retention Behavior
-SimpleBackups creates a new backup when no existing backup exists within the smallest configured backup window interval. During each tick, every backup window independently selects the best backup for each time slot and stale backups which are not selected by any window are deleted.
+SimpleBackups creates a new backup when no existing backup exists within the smallest configured backup window interval. During each tick, every backup window independently selects one backup for each populated retention slot and stale backups which are not selected by any window are deleted.
+
+Retention slots are fixed and derived only from each backup's timestamp using `Math.floor(timestamp / interval_ms)`. The earliest available backup in a slot is retained because it is closest to the start of that slot. A backup therefore remains in the same slot as time passes, allowing an hourly backup selected by a daily window to remain available for later daily slots instead of being replaced and deleted every hour.
+
+Slots are anchored to the Unix epoch. As a result, `day` in the example represents consecutive fixed 24-hour periods rather than local calendar days, and is not affected by time zones or daylight saving time.
 
 For example, the following windows will attempt to keep up to 24 hourly backups and up to 30 daily backups.
 
@@ -150,9 +154,18 @@ windows: [
 ]
 ```
 
+With uninterrupted hourly backups, this configuration converges to 24 populated hourly slots and 30 populated daily slots (the current slot plus the previous 29 slots). Because one backup can satisfy both windows at the same time, this normally represents 53 unique stored backups rather than 54.
+
 * **Note** backups can satisfy multiple windows at the same time.
 * **Note** SimpleBackups can only keep backups that exist and cannot create missed backups for time periods where the process was offline.
 * **Note** backups are selected by timestamp and not by filename or storage order.
+
+## Testing
+The test suite uses the built-in Node.js test runner and does not require any additional dependencies.
+
+```bash
+npm test
+```
 
 ## License
 [MIT](./LICENSE)

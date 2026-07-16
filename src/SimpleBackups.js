@@ -8,7 +8,7 @@ import EventEmitter from 'node:events';
 
 /**
  * @typedef {Object} BackupWindow
- * @property {number} interval_ms The interval at which this window's backups should be created (in milliseconds).
+ * @property {number} interval_ms The width of each retention slot in this window (in milliseconds).
  * @property {number} limit The maximum number of backups to keep in this window.
  */
 
@@ -117,6 +117,39 @@ export class SimpleBackups extends EventEmitter {
     }
 
     #tick_in_flight = false;
+
+    /**
+     * Determines which backup IDs should be kept by the configured backup windows.
+     * @param {number} now The current timestamp (in milliseconds).
+     * @returns {Set<string>}
+     */
+    _get_keep_backups_ids(now) {
+        /** @type {Set<string>} */
+        const keep_backups_ids = new Set();
+        for (let i = 0; i < this.#options.windows.length; i++) {
+            /** @type {Map<number, Backup>} */
+            const best_by_slot = new Map();
+            const window = this.#options.windows[i];
+            const current_slot = Math.floor(now / window.interval_ms); // Anchor slots to timestamps instead of their ever-changing age
+            const oldest_slot = current_slot - window.limit + 1;
+
+            for (let j = 0; j < this.#backups.length; j++) {
+                const backup = this.#backups[j];
+                if (backup.timestamp > now) continue; // Ignore future backups (this should not even be possible?)
+
+                const slot = Math.floor(backup.timestamp / window.interval_ms); // A backup always belongs to the same slot as it ages
+                if (slot < oldest_slot || slot > current_slot) continue; // Ignore backups outside this window
+
+                // Backups are sorted from oldest to newest, so the first backup is the closest one to the start of this slot
+                if (!best_by_slot.has(slot)) best_by_slot.set(slot, backup);
+            }
+
+            for (const [_, backup] of best_by_slot) keep_backups_ids.add(backup.id); // Add the remaining best backup slot candidates to the list of backups to keep
+        }
+
+        return keep_backups_ids;
+    }
+
     /**
      * Ticks the SimpleBackups instance.
      */
@@ -200,29 +233,7 @@ export class SimpleBackups extends EventEmitter {
                 }
             }
 
-            const keep_backups_ids = new Set(); // Determine which backup IDs to keep
-            for (let i = 0; i < this.#options.windows.length; i++) {
-                const best_by_slot = new Map();
-                const window = this.#options.windows[i];
-                for (let j = 0; j < this.#backups.length; j++) {
-                    const backup = this.#backups[j];
-                    const backup_age_ms = now - backup.timestamp;
-                    if (backup_age_ms < 0) continue; // Ignore future backups (this should not even be possible?)
-
-                    const slot = Math.floor(backup_age_ms / window.interval_ms); // Calculate the window slot for the backup
-                    if (slot >= window.limit) continue; // Ignore backups outside this window
-
-                    const target_timestamp = now - slot * window.interval_ms; // Calculate the target timestamp for this backup's ideal slot
-                    const distance_to_target_ms = Math.abs(backup.timestamp - target_timestamp); // Calculate the distance between the backup's timestamp and the target timestamp
-
-                    const candidate = best_by_slot.get(slot); // Measure and track the best or lowest distance to target timestamp for a given slot
-                    if (!candidate || distance_to_target_ms < candidate.distance_to_target_ms) {
-                        best_by_slot.set(slot, { backup, distance_to_target_ms });
-                    }
-                }
-
-                for (const [_, { backup }] of best_by_slot) keep_backups_ids.add(backup.id); // Add the remaining best backup slot candidates to the list of backups to keep
-            }
+            const keep_backups_ids = this._get_keep_backups_ids(now); // Determine which backup IDs to keep
 
             const stale_backups = []; // Determine which backups are stale and need to be deleted
             const deleted_backups_ids = new Set(); // Determine which backup IDs have been deleted

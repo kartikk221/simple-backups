@@ -1,3 +1,4 @@
 import { SimpleBackups } from './SimpleBackups.js';
+import { S3SimpleBackups } from './S3SimpleBackups.js';
 
-export { SimpleBackups };
+export { S3SimpleBackups, SimpleBackups };

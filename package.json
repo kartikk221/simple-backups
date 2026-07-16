@@ -1,7 +1,7 @@
 {
     "name": "simple-backups",
-    "version": "1.1.1",
-    "description": "Simple yet unopinionated zero-dependency package to easily setup automatic backups for any data source that persists to any storage mechanism.",
+    "version": "1.2.0",
+    "description": "Simple yet unopinionated package to automatically create and prune backups using custom adapters or S3-compatible storage.",
     "type": "module",
     "main": "./src/index.js",
     "types": "./src/index.d.ts",
@@ -29,13 +29,17 @@
         "javascript",
         "s3-bucket",
         "unopinionated",
-        "zero-dependency"
+        "s3-compatible"
     ],
     "license": "MIT",
     "engines": {
         "node": ">=20"
     },
+    "dependencies": {
+        "@aws-sdk/client-s3": "3.1089.0"
+    },
     "devDependencies": {
+        "@types/node": "20.19.43",
         "typescript": "7.0.2"
     }
 }

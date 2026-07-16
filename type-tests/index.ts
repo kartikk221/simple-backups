@@ -1,8 +1,11 @@
 import {
     SimpleBackups,
+    S3SimpleBackups,
     type Backup,
     type BackupAdapters,
     type BackupWindow,
+    type S3SimpleBackupsCreateResult,
+    type S3SimpleBackupsOptions,
     type SimpleBackupsOptions,
 } from 'simple-backups';
 
@@ -46,3 +49,44 @@ backups.on('invalid', () => {});
 backups.destroyed = false;
 
 void invalid_backup;
+
+const s3_source: S3SimpleBackupsCreateResult = {
+    path: '/tmp/database.sql',
+    options: {
+        ContentType: 'application/sql',
+        Metadata: { environment: 'test' },
+        StorageClass: 'STANDARD_IA',
+    },
+};
+const s3_options: S3SimpleBackupsOptions = {
+    windows,
+    bucket: {
+        name: 'backups',
+        region: 'us-east-1',
+        endpoint: 'https://ewr1.vultrobjects.com',
+        credentials: {
+            accessKeyId: 'access-key-id',
+            secretAccessKey: 'secret-access-key',
+        },
+    },
+    adapters: {
+        create: async () => s3_source,
+    },
+};
+const s3_backups = new S3SimpleBackups(s3_options);
+new S3SimpleBackups({
+    windows,
+    bucket: { name: 'backups', region: 'us-east-1' },
+    adapters: { create: async () => ({ path: '/tmp/database.sql' }) },
+});
+
+const s3_bucket: string = s3_backups.bucket;
+
+void s3_bucket;
+
+new S3SimpleBackups({
+    windows,
+    bucket: { name: 'backups', region: 'us-east-1' },
+    // @ts-expect-error The S3 creation adapter must be asynchronous
+    adapters: { create: () => s3_source },
+});

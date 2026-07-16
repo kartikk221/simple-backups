@@ -19,8 +19,9 @@ This package aims to simplify the task of automatically creating and pruning bac
 - TypeScript Type Definitions
 - Automatic Backup Creation
 - Multi-Window Backup Retention
+- S3-Compatible Object Storage
 - CPU & Memory Efficient
-- No Dependencies
+- Dependency-Free Core
 
 ## Installation
 SimpleBackups can be installed using node package manager (`npm`)
@@ -89,12 +90,111 @@ SimpleBackups includes first-party TypeScript declarations. No separate `@types`
 ```typescript
 import {
     SimpleBackups,
+    S3SimpleBackups,
     type Backup,
     type BackupAdapters,
     type BackupWindow,
+    type S3SimpleBackupsOptions,
     type SimpleBackupsOptions
 } from 'simple-backups';
 ```
+
+## S3SimpleBackups
+`S3SimpleBackups` extends `SimpleBackups` and supplies its `list`, `create` and `delete` adapters using an S3-compatible object storage bucket. The user only needs to provide an asynchronous adapter which creates a local backup file and returns an object containing its path.
+
+The core `SimpleBackups` class remains dependency-free. S3 support uses the official modular [`@aws-sdk/client-s3`](https://www.npmjs.com/package/@aws-sdk/client-s3) package as its only direct runtime dependency.
+
+The following example creates a MySQL dump in the operating system's temporary directory and returns an object containing its path and native S3 upload options. `S3SimpleBackups` determines the filename and file size, streams the file to Vultr Object Storage and removes the temporary file after the upload attempt.
+
+```javascript
+import { exec } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { S3SimpleBackups } from 'simple-backups';
+
+// Convert exec into a promise so the adapter can await mysqldump.
+const exec_async = promisify(exec);
+
+// Retention window intervals are expressed in milliseconds.
+const hour = 1000 * 60 * 60;
+const day = hour * 24;
+
+const backups = new S3SimpleBackups({
+    // Keep one backup per hour for 24 hours and one per day for 30 days.
+    windows: [
+        { interval_ms: hour, limit: 24 },
+        { interval_ms: day, limit: 30 }
+    ],
+
+    // The bucket name and connection properties used by the official AWS S3
+    // client. Vultr accepts us-east-1 as the request-signing region.
+    bucket: {
+        name: 'wuup-db-backups',
+        region: 'us-east-1',
+        endpoint: 'https://ewr1.vultrobjects.com',
+        credentials: {
+            accessKeyId: process.env.S3_ACCESS_KEY_ID,
+            secretAccessKey: process.env.S3_SECRET_ACCESS_KEY
+        }
+    },
+
+    // This is the only storage adapter the application needs to implement.
+    adapters: {
+        async create() {
+            // Include a timestamp so every temporary filename is unique.
+            const file_path = join(tmpdir(), `wuupdb_${Date.now()}.sql`);
+
+            // mysqldump runs as a child process. Awaiting it does not block the
+            // Node.js event loop; it only delays this backup until the dump exits.
+            await exec_async(`mysqldump wuupdb > "${file_path}"`);
+
+            // S3SimpleBackups opens, sizes, streams and removes this file. The
+            // options object is passed to the underlying S3 SDK as-is.
+            return {
+                path: file_path,
+                options: {
+                    ContentType: 'application/sql',
+                    StorageClass: 'STANDARD_IA',
+                    Metadata: {
+                        database: 'wuupdb'
+                    }
+                }
+            };
+        }
+    }
+});
+
+backups.on('create', (backup) => {
+    console.log('Created S3 backup:', backup.id);
+});
+
+backups.on('delete', (backup) => {
+    console.log('Deleted S3 backup:', backup.id);
+});
+
+backups.on('error', (error) => {
+    console.error(error);
+});
+```
+
+`S3SimpleBackups` uses the local backup file's basename as the S3 object key without adding or changing anything.
+
+```text
+wuupdb_1784230616789.sql
+```
+
+Every object in the configured bucket is treated as a backup managed by this instance. Backup timestamps are read from the standard S3 `LastModified` value returned by `ListObjectsV2`; timestamps are not encoded into object keys or custom metadata.
+
+S3 identifies an object by its key and does not assign a separate object ID. Uploading another file with the same name would overwrite the existing object unless bucket versioning is enabled. To protect retained backups consistently across S3-compatible providers, `S3SimpleBackups` rejects a filename which already exists. Backup creation adapters should therefore create unique filenames, commonly by including `Date.now()` as shown above.
+
+Files larger than the configured part size are streamed using bounded [S3 multipart uploads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html). The default part size is 8 MiB and the default concurrency is four parts. These can be customized with `part_size` and `queue_size`. Memory use is bounded by the part size and upload concurrency rather than the total backup size.
+
+The creation adapter must return `{ path, options? }`. The optional `options` object is passed directly to the underlying S3 SDK, so it uses native SDK property names such as `ContentType`, `StorageClass`, `Metadata`, `ServerSideEncryption` and `SSEKMSKeyId`. `Bucket`, `Key`, `Body` and `ContentLength` are managed internally and cannot be overridden. Created local backup files are removed after every upload attempt.
+
+An existing `S3Client` can be provided using `client`. Injected clients are not destroyed by default; clients constructed from the `bucket` configuration are destroyed when the `S3SimpleBackups` instance is destroyed. This behavior can be overridden with `destroy_client`.
+
+The configured S3 identity needs permission to list the bucket and to create, upload, complete, abort and delete its objects.
 
 ## SimpleBackups
 Below is a breakdown of the `SimpleBackups` class.

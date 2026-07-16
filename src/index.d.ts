@@ -1,3 +1,9 @@
+import type {
+    CreateMultipartUploadCommandInput,
+    S3Client,
+    S3ClientConfig,
+} from '@aws-sdk/client-s3';
+
 /**
  * A backup managed by SimpleBackups.
  */
@@ -76,4 +82,76 @@ export class SimpleBackups {
 
     /** Whether this instance has been destroyed. */
     readonly destroyed: boolean;
+}
+
+/** S3 SDK upload options which can be applied without overriding internally managed fields. */
+export type S3SimpleBackupsUploadOptions = Omit<
+    CreateMultipartUploadCommandInput,
+    'Body' | 'Bucket' | 'ContentLength' | 'Key'
+>;
+
+/** The bucket name and native configuration used to construct the S3 client. */
+export type S3SimpleBackupsBucket = S3ClientConfig & {
+    /** The name of the S3 bucket in which backups should be stored. */
+    name: string;
+};
+
+/**
+ * A backup file and its optional S3 object properties.
+ */
+export interface S3SimpleBackupsCreateResult {
+    /** The path of the backup file to upload. */
+    path: string;
+
+    /** Native S3 SDK options applied to the uploaded object. */
+    options?: S3SimpleBackupsUploadOptions;
+}
+
+/**
+ * The backup creation adapter used by S3SimpleBackups.
+ */
+export interface S3SimpleBackupsAdapters {
+    /** Creates a backup file and returns its path and upload options. */
+    create(): Promise<S3SimpleBackupsCreateResult>;
+}
+
+/**
+ * Options used to construct an S3SimpleBackups instance.
+ */
+export interface S3SimpleBackupsOptions {
+    /** The backup retention windows to maintain. */
+    windows: BackupWindow[];
+
+    /** The S3 bucket and client configuration to use. */
+    bucket: S3SimpleBackupsBucket;
+
+    /** The backup creation adapter to use. */
+    adapters: S3SimpleBackupsAdapters;
+
+    /** An existing S3 client to use. */
+    client?: S3Client;
+
+    /** Whether the S3 client should be destroyed with this instance. */
+    destroy_client?: boolean;
+
+    /** The multipart upload part size in bytes. */
+    part_size?: number;
+
+    /** The maximum number of parts to upload concurrently. */
+    queue_size?: number;
+
+}
+
+/**
+ * A SimpleBackups implementation which stores backups in any S3-compatible object storage bucket.
+ */
+export class S3SimpleBackups extends SimpleBackups {
+    constructor(options: S3SimpleBackupsOptions);
+
+    /** The configured S3 client. */
+    readonly client: S3Client;
+
+    /** The configured S3 bucket. */
+    readonly bucket: string;
+
 }

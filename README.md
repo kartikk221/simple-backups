@@ -130,7 +130,7 @@ const backups = new S3SimpleBackups({
     // The bucket name and connection properties used by the official AWS S3
     // client. Vultr accepts us-east-1 as the request-signing region.
     bucket: {
-        name: 'wuup-db-backups',
+        name: 'test-db-backups',
         region: 'us-east-1',
         endpoint: 'https://ewr1.vultrobjects.com',
         credentials: {
@@ -143,11 +143,11 @@ const backups = new S3SimpleBackups({
     adapters: {
         async create() {
             // Include a timestamp so every temporary filename is unique.
-            const file_path = join(tmpdir(), `wuupdb_${Date.now()}.sql`);
+            const file_path = join(tmpdir(), `testdb_${Date.now()}.sql`);
 
             // mysqldump runs as a child process. Awaiting it does not block the
             // Node.js event loop; it only delays this backup until the dump exits.
-            await exec_async(`mysqldump wuupdb > "${file_path}"`);
+            await exec_async(`mysqldump testdb > "${file_path}"`);
 
             // S3SimpleBackups opens, sizes, streams and removes this file. The
             // options object is passed to the underlying S3 SDK as-is.
@@ -157,7 +157,7 @@ const backups = new S3SimpleBackups({
                     ContentType: 'application/sql',
                     StorageClass: 'STANDARD_IA',
                     Metadata: {
-                        database: 'wuupdb'
+                        database: 'testdb'
                     }
                 }
             };
@@ -181,7 +181,7 @@ backups.on('error', (error) => {
 `S3SimpleBackups` uses the local backup file's basename as the S3 object key without adding or changing anything.
 
 ```text
-wuupdb_1784230616789.sql
+testdb_1784230616789.sql
 ```
 
 Every object in the configured bucket is treated as a backup managed by this instance. Backup timestamps are read from the standard S3 `LastModified` value returned by `ListObjectsV2`; timestamps are not encoded into object keys or custom metadata.

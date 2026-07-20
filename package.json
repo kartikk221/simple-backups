@@ -1,6 +1,6 @@
 {
     "name": "simple-backups",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Simple yet unopinionated package to automatically create and prune backups using custom adapters or S3-compatible storage.",
     "type": "module",
     "main": "./src/index.js",

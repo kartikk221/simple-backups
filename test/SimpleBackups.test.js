@@ -7,6 +7,8 @@ const minute = 1000 * 60;
 const hour = minute * 60;
 const day = hour * 24;
 const original_date_now = Date.now;
+const original_clear_timeout = globalThis.clearTimeout;
+const original_set_timeout = globalThis.setTimeout;
 const active_backups = new Set();
 
 /**
@@ -21,9 +23,11 @@ function create_simple_backups(options) {
 }
 
 afterEach(() => {
-    Date.now = original_date_now;
     for (const backups of active_backups) backups.destroy();
     active_backups.clear();
+    Date.now = original_date_now;
+    globalThis.clearTimeout = original_clear_timeout;
+    globalThis.setTimeout = original_set_timeout;
 });
 
 test('exports SimpleBackups through the package entry point', () => {
@@ -108,6 +112,50 @@ test('creates backups at the smallest configured interval and returns a defensiv
     const backup_list = backups.backups;
     backup_list.length = 0;
     assert.equal(backups.backups.length, 2);
+});
+
+test('schedules creation relative to a delayed backup timestamp instead of the initial timer phase', async () => {
+    let now = day * 100;
+    let create_calls = 0;
+    let next_timer_id = 0;
+    const timers = new Map();
+    Date.now = () => now;
+    globalThis.setTimeout = (callback, delay = 0) => {
+        const id = ++next_timer_id;
+        timers.set(id, { callback, due_at: now + delay });
+        return id;
+    };
+    globalThis.clearTimeout = (id) => timers.delete(id);
+
+    const backups = create_simple_backups({
+        windows: [{ interval_ms: hour, limit: 2 }],
+        adapters: {
+            list: () => [],
+            create: () => {
+                if (create_calls === 0) now += minute * 2; // Simulate a slow initial dump.
+                return { id: `backup-${create_calls++}`, timestamp: now };
+            },
+            delete: () => true,
+        },
+    });
+
+    async function run_next_timer() {
+        const [id, timer] = [...timers].sort((left, right) => left[1].due_at - right[1].due_at)[0];
+        timers.delete(id);
+        now = timer.due_at;
+        await timer.callback();
+    }
+
+    await run_next_timer();
+    assert.equal(create_calls, 1);
+    assert.equal(now, day * 100 + minute * 2);
+
+    await run_next_timer();
+    assert.equal(now, day * 100 + minute * 2 + hour);
+    assert.equal(create_calls, 2);
+
+    backups.destroy();
+    active_backups.delete(backups);
 });
 
 test('retains 24 hourly slots and 30 daily slots as backups age', async () => {

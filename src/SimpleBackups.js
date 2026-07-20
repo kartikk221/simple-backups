@@ -51,11 +51,8 @@ export class SimpleBackups extends EventEmitter {
      */
     #options;
 
-    /**
-     * The intervals for the backup windows.
-     * @type {Map<string, ReturnType<typeof setInterval>>}
-     */
-    #intervals = new Map();
+    /** @type {ReturnType<typeof setTimeout>|undefined} */
+    #tick_timer;
 
     /**
      * The most recently listed backups from the upstream storage mechanism.
@@ -108,15 +105,47 @@ export class SimpleBackups extends EventEmitter {
             if (window?.interval_ms <= this.#smallest_interval_ms) this.#smallest_interval_ms = window?.interval_ms;
         }
 
-        // Create a tick interval with the smallest interval (aka. most precision)
-        this.#intervals.set(
-            'tick',
-            setInterval(() => this.__tick(), this.#smallest_interval_ms),
-        );
-        setTimeout(() => this.__tick(), 0); // Schedule an immediate tick
+        this.#schedule_tick(0); // Schedule an immediate tick
     }
 
     #tick_in_flight = false;
+
+    /**
+     * Schedules the next tick, replacing any previously scheduled tick.
+     * @param {number} delay_ms
+     */
+    #schedule_tick(delay_ms) {
+        if (this.#destroyed) return;
+        if (this.#tick_timer !== undefined) clearTimeout(this.#tick_timer);
+
+        const timer = setTimeout(() => {
+            if (this.#tick_timer === timer) this.#tick_timer = undefined;
+            return this.__tick();
+        }, delay_ms);
+        this.#tick_timer = timer;
+    }
+
+    /**
+     * Determines when another backup can be created. Scheduling relative to
+     * backup timestamps avoids timer phase drift when creation takes time.
+     * @param {number} now
+     * @returns {number}
+     */
+    #get_next_tick_delay(now) {
+        let newest_current_timestamp = -Infinity;
+        for (const backup of this.#backups) {
+            const backup_age = now - backup.timestamp;
+            if (
+                backup_age >= 0 &&
+                backup_age < this.#smallest_interval_ms &&
+                backup.timestamp > newest_current_timestamp
+            )
+                newest_current_timestamp = backup.timestamp;
+        }
+
+        if (newest_current_timestamp === -Infinity) return this.#smallest_interval_ms;
+        return Math.max(0, newest_current_timestamp + this.#smallest_interval_ms - now);
+    }
 
     /**
      * Determines which backup IDs should be kept by the configured backup windows.
@@ -265,6 +294,7 @@ export class SimpleBackups extends EventEmitter {
             this.emit('error', error);
         } finally {
             this.#tick_in_flight = false;
+            this.#schedule_tick(this.#get_next_tick_delay(Date.now()));
         }
     }
 
@@ -353,14 +383,14 @@ export class SimpleBackups extends EventEmitter {
     }
 
     /**
-     * Destroys the SimpleBackups instance and stops all intervals.
+     * Destroys the SimpleBackups instance and stops its timer.
      */
     destroy() {
         if (this.#destroyed) return;
         this.#destroyed = true; // Only destroy once
 
-        for (const [_, interval] of this.#intervals) clearInterval(interval);
-        this.#intervals.clear(); // Clear all intervals
+        if (this.#tick_timer !== undefined) clearTimeout(this.#tick_timer);
+        this.#tick_timer = undefined;
 
         super.removeAllListeners(); // Remove all event listeners (which effectively destroys the EventEmitter)
     }
